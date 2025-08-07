@@ -72,7 +72,7 @@ def get_solution(x, patterns):
     print("\nCutting Patterns Used:")
     for i, var in enumerate(x):
         if var.varValue > 0:
-            print(f"Use pattern {patterns[i]} --> {int(var.varValue)} times")
+            print(f"Pattern {patterns[i]} is used {int(var.varValue)} times")
     print(f"\nTotal rolls used: {int(pulp.value(pulp.lpSum(var for var in x)))}")
 
 
