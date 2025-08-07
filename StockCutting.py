@@ -1,76 +1,99 @@
 import pulp
 
-# Data
-W = 15
-boards = [4, 6, 7]
-requirements = [80, 50, 100]
-m = len(boards)
 
-# Starting feasible solution where only cutting one board width at the time
-patterns = []
-for i in range(m):
-    pattern = [0] * m
-    pattern[i] = W // boards[i]
-    patterns.append(pattern)
+def initialize_patterns(W, boards):
+    # Starting feasible solution where only cutting one board width at the time
+
+    m = len(boards)
+    patterns = []
+    for i in range(m):
+        pattern = [0] * m
+        pattern[i] = W // boards[i]
+        patterns.append(pattern)
+    return patterns
 
 
-# Column Generation Loop
-while True: # keep iterating (exiting and entering columns until all reduced costs are negative)
-
+def solve_master(patterns, requirements, m):
     # Solve the restricted master problem RMP
-    RMP = pulp.LpProblem("CuttingStockMaster", pulp.LpMinimize)
+
+    rmp = pulp.LpProblem("CuttingStockMaster", pulp.LpMinimize)
     x = [pulp.LpVariable(f"x_{j}", lowBound=0, cat="Continuous") for j in range(len(patterns))]
 
-    # minimize number of rolls used
-    RMP += pulp.lpSum(x)
+    # Objective: minimize rolls
+    rmp += pulp.lpSum(x)
 
-    # demand constraint
+    # Demand constraints
     for i in range(m):
-        RMP += pulp.lpSum(patterns[j][i] * x[j] for j in range(len(patterns))) >= requirements[i]
+        rmp += pulp.lpSum(patterns[j][i] * x[j] for j in range(len(patterns))) >= requirements[i]
+
+    rmp.solve(pulp.HiGHS(msg=False))
+    dual = [c.pi for c in rmp.constraints.values()]
+    return dual, rmp
 
 
-    RMP.solve(pulp.HiGHS(msg=False))
-
-    # dual solution
-    dual = [c.pi for c in RMP.constraints.values()]
-
+def solve_subproblem(dual, boards, W):
     # Solve the column generation subproblem CGSP
+
+    m = len(boards)
     sub = pulp.LpProblem("Subproblem", pulp.LpMaximize)
     y = [pulp.LpVariable(f"y_{i}", lowBound=0, cat="Integer") for i in range(m)]
 
-    # maximize reduced cost
+    # Objective: maximize dual value
     sub += pulp.lpSum(dual[i] * y[i] for i in range(m))
 
-    # width constraint
+    # Width constraint
     sub += pulp.lpSum(boards[i] * y[i] for i in range(m)) <= W
 
     sub.solve(pulp.HiGHS(msg=False))
 
-    # if all reduced cost are negative --> optimal, otherwise and new column is generated and entered
     reduced_cost = 1 - pulp.value(sub.objective)
-    if reduced_cost >= -1e-3:
-        break  # optimality
-
-    # add new pattern (column)
-    new_pattern = [int(y[i].varValue) for i in range(m)]
-    patterns.append(new_pattern)
+    pattern = [int(y[i].varValue) for i in range(m)]
+    return reduced_cost, pattern
 
 
-# get the optimal solution for the RMP using the column generated in CGSP
-master = pulp.LpProblem("Master", pulp.LpMinimize)
-x = [pulp.LpVariable(f"x_{j}", lowBound=0, cat="Integer") for j in range(len(patterns))]
-master += pulp.lpSum(x)
+def solve_final_integer_master(patterns, requirements, m):
+    # get the optimal solution for the RMP using the column generated in CGSP
 
-for i in range(m):
-    master += pulp.lpSum(patterns[j][i] * x[j] for j in range(len(patterns))) >= requirements[i]
+    master = pulp.LpProblem("FinalMaster", pulp.LpMinimize)
+    x = [pulp.LpVariable(f"x_{j}", lowBound=0, cat="Integer") for j in range(len(patterns))]
 
-master.solve(pulp.HiGHS(msg=False))
+    master += pulp.lpSum(x)
+
+    for i in range(m):
+        master += pulp.lpSum(patterns[j][i] * x[j] for j in range(len(patterns))) >= requirements[i]
+
+    master.solve(pulp.HiGHS(msg=False))
+    return x, master
 
 
-# Output solution
-print("\nCutting Patterns Used:")
-for i, var in enumerate(x):
-    if var.varValue > 0:
-        print(f"Use pattern {patterns[i]} --> {int(var.varValue)} times")
+def get_solution(x, patterns):
+    # display solution
 
-print(f"\nTotal rolls used: {int(pulp.value(master.objective))}")
+    print("\nCutting Patterns Used:")
+    for i, var in enumerate(x):
+        if var.varValue > 0:
+            print(f"Use pattern {patterns[i]} --> {int(var.varValue)} times")
+    print(f"\nTotal rolls used: {int(pulp.value(pulp.lpSum(var for var in x)))}")
+
+
+if __name__ == "__main__":
+
+    W = 15
+    boards = [4, 6, 7]
+    requirements = [80, 50, 100]
+    m = len(boards)
+
+    patterns = initialize_patterns(W, boards)
+
+    while True:  # keep iterating (exiting and entering columns until all reduced costs are negative)
+        dual, RMP = solve_master(patterns, requirements, m)
+        reduced_cost, new_pattern = solve_subproblem(dual, boards, W)
+
+        if reduced_cost >= -1e-3:
+            break  # optimality
+
+        patterns.append(new_pattern)
+
+    x, master = solve_final_integer_master(patterns, requirements, m)
+
+    get_solution(x, patterns)
