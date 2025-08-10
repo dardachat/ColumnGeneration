@@ -39,10 +39,6 @@ The column generation algorithm proceeds as follows:
 5.  **Integer Solution:**  After the LP relaxation is solved, an integer solution can be obtained by rounding or by using a branch-and-bound algorithm, which uses the column generation process within each node of the branching tree.
 
 
-![](../../Downloads/deepseek_mermaid_20250807_979e21.png)
-
-
-
 This code is direct implementation of the example explained by **Professor Sergiy Butenko** that can be found [here](https://www.youtube.com/watch?v=O918V86Grhc) 
 
 The model is written using [PuLP : A Linear Programming Toolkit for Python](https://coin-or.github.io/pulp/main/index.html) 
